@@ -46,7 +46,7 @@ export function QRTicket({
           viewBox={`-2 -2 ${qr.size + 4} ${qr.size + 4}`}
           width="100%"
           role="img"
-          aria-label="Scan this code with the staff app to sign in or out"
+          aria-label="Scan this code with your phone's camera to sign in or out"
           style={{ display: "block", background: "#F4F1E8" }}
           shapeRendering="crispEdges"
         >

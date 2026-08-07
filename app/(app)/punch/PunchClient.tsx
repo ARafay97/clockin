@@ -26,10 +26,10 @@ type PunchResponse = PunchOk | PunchFail;
 
 const TOKEN_STALE_REASONS = new Set(["expired", "wrong-site", "bad-token", "not-a-cafe-code", "unreadable"]);
 
-export function PunchClient() {
-  const [step, setStep] = useState<Step>("code");
+export function PunchClient({ initialCode }: { initialCode?: string }) {
+  const [step, setStep] = useState<Step>(initialCode ? "pin" : "code");
   const [manual, setManual] = useState("");
-  const [code, setCode] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(initialCode ?? null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PunchOk | null>(null);
   const [pin, setPin] = useState("");

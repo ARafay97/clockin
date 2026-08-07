@@ -85,8 +85,17 @@ export function KioskClient({ device }: { device: string }) {
   const msLeft = Math.max(0, data.msLeft - elapsed);
   const nowDisplay = data.now + elapsed;
 
+  // Encode a real URL rather than the bare payload, so any phone's native
+  // camera app can scan it and open straight to the PIN screen -- scanning
+  // inside the app (BarcodeDetector) still works too, but that API doesn't
+  // exist in Safari on iOS, so this is the path that actually works there.
+  const qrUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/punch?code=${encodeURIComponent(data.payload)}`
+      : data.payload;
+
   const ticket = (
-    <QRTicket payload={data.payload} code={data.code} msLeft={msLeft} period={data.period} cafeName={data.cafeName} />
+    <QRTicket payload={qrUrl} code={data.code} msLeft={msLeft} period={data.period} cafeName={data.cafeName} />
   );
 
   if (full) {
