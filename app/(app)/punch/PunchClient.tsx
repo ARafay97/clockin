@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine, Check, Clock } from "lucide-react";
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
+import { DecodeHintType } from "@zxing/library";
 import { PinPad } from "@/components/PinPad";
 import { Flag } from "@/components/Flag";
 import { hhmm, type Flag as FlagType } from "@/lib/attendance";
@@ -69,7 +70,8 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
         return;
       }
       try {
-        const reader = new BrowserQRCodeReader();
+        const hints = new Map([[DecodeHintType.TRY_HARDER, true]]);
+        const reader = new BrowserQRCodeReader(hints, { delayBetweenScanAttempts: 100 });
         controls = await reader.decodeFromConstraints(
           { video: { facingMode: "environment" } },
           videoRef.current ?? undefined,

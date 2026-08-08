@@ -43,7 +43,7 @@ export function QRTicket({
       </div>
       {qr ? (
         <svg
-          viewBox={`-2 -2 ${qr.size + 4} ${qr.size + 4}`}
+          viewBox={`-4 -4 ${qr.size + 8} ${qr.size + 8}`}
           width="100%"
           role="img"
           aria-label="Scan this code with your phone's camera to sign in or out"
