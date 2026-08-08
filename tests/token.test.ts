@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { tokenForWindow, buildPayload, validateToken, validateAny, windowIndex, type TokenConfig } from "../lib/token";
+import { CODE_LENGTH } from "../lib/punch-constants";
 
 const cfg: TokenConfig = { siteId: "CAFE01", secret: "s3cr3t-test-key", periodMs: 60000 };
 const otherSite: TokenConfig = { ...cfg, siteId: "CAFE02" };
@@ -9,8 +10,8 @@ describe("token generation", () => {
     expect(tokenForWindow(cfg.secret, 42)).toBe(tokenForWindow(cfg.secret, 42));
   });
 
-  it("produces a 10-character code", () => {
-    expect(tokenForWindow(cfg.secret, 42)).toHaveLength(10);
+  it(`produces a ${CODE_LENGTH}-character code`, () => {
+    expect(tokenForWindow(cfg.secret, 42)).toHaveLength(CODE_LENGTH);
   });
 
   it("differs across windows and secrets", () => {
@@ -45,7 +46,7 @@ describe("validateToken", () => {
 
   it("rejects a forged token with a valid window index", () => {
     const w = windowIndex(ts, cfg.periodMs);
-    const forged = `CAFEPUNCH|1|${cfg.siteId}|${w}|AAAAAAAAAA`;
+    const forged = `CAFEPUNCH|1|${cfg.siteId}|${w}|${"A".repeat(CODE_LENGTH)}`;
     expect(validateToken(cfg, forged, ts)).toEqual({ ok: false, reason: "bad-token" });
   });
 
@@ -58,7 +59,7 @@ describe("validateToken", () => {
 describe("validateAny (typed fallback code)", () => {
   const ts = 2000 * 60000;
 
-  it("accepts the current 10-character typed code", () => {
+  it(`accepts the current ${CODE_LENGTH}-character typed code`, () => {
     const code = tokenForWindow(cfg.secret, windowIndex(ts, cfg.periodMs));
     expect(validateAny(cfg, code, ts)).toEqual({ ok: true });
   });
@@ -69,6 +70,6 @@ describe("validateAny (typed fallback code)", () => {
   });
 
   it("rejects a code of the wrong length as unreadable", () => {
-    expect(validateAny(cfg, "ABCDE", ts)).toEqual({ ok: false, reason: "unreadable" });
+    expect(validateAny(cfg, "A".repeat(CODE_LENGTH - 1), ts)).toEqual({ ok: false, reason: "unreadable" });
   });
 });

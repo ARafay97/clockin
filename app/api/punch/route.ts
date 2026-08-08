@@ -56,18 +56,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "site not configured" }, { status: 500 });
   }
 
+  const ip = requestIp(request.headers);
+
   // Step 2: validate the scanned/typed code against the HMAC token, computed
-  // for windowIndex(now) +/- 1.
+  // for windowIndex(now) +/- 1. Rate-limited by IP under its own key --
+  // checking a code is cheap (no bcrypt), so without a cap here a flood of
+  // guesses could hunt for a valid window without ever touching the PIN
+  // limiter below.
+  const codeKey = `code:${ip}`;
+  if (isRateLimited(codeKey, now)) {
+    return NextResponse.json({ ok: false, reason: "rate-limited" }, { status: 429 });
+  }
   const tokenConfig = {
     siteId: SITE_ID,
     secret: getPunchSecret(),
     periodMs: settingsRow.token_period_ms,
   };
   const validation = validateAny(tokenConfig, body.code, now);
-  if (!validation.ok) return fail(validation.reason);
+  if (!validation.ok) {
+    recordFailure(codeKey, now);
+    return fail(validation.reason);
+  }
 
   // Step 3: rate-limit PIN attempts by IP, before touching the PIN itself.
-  const ip = requestIp(request.headers);
   if (isRateLimited(ip, now)) {
     return NextResponse.json({ ok: false, reason: "rate-limited" }, { status: 429 });
   }

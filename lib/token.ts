@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
+import { CODE_LENGTH } from "@/lib/punch-constants";
 
 /**
  * HMAC-based punch token. Replaces the prototype's FNV-1a hash, which only
@@ -26,18 +27,21 @@ export function getPunchSecret(): string {
 
 export const windowIndex = (ts: number, periodMs: number) => Math.floor(ts / periodMs);
 
+const CODE_BITS = CODE_LENGTH * 5; // base32 packs 5 bits/char
+const CODE_BYTES = Math.ceil(CODE_BITS / 8);
+
 /**
- * Derives a 10-character base32 code from HMAC-SHA256(secret, windowIndex).
- * Base32 packs 5 bits/char, so 10 chars = 50 bits -- we fold the 256-bit
- * digest down to the top 50 bits of its first 7 bytes to get there.
+ * Derives a CODE_LENGTH-character base32 code from
+ * HMAC-SHA256(secret, windowIndex) -- folds the 256-bit digest down to the
+ * top CODE_BITS bits of its first CODE_BYTES bytes to get there.
  */
 export function tokenForWindow(secret: string, win: number): string {
   const mac = crypto.createHmac("sha256", secret).update(String(win)).digest();
   let bits = BigInt(0);
-  for (let i = 0; i < 7; i++) bits = (bits << BigInt(8)) | BigInt(mac[i]);
-  bits >>= BigInt(6); // 56 bits -> top 50 bits
+  for (let i = 0; i < CODE_BYTES; i++) bits = (bits << BigInt(8)) | BigInt(mac[i]);
+  bits >>= BigInt(CODE_BYTES * 8 - CODE_BITS); // drop down to exactly CODE_BITS bits
   let out = "";
-  for (let i = 9; i >= 0; i--) {
+  for (let i = CODE_LENGTH - 1; i >= 0; i--) {
     const idx = Number((bits >> BigInt(i * 5)) & BigInt(0x1f));
     out += B32[idx];
   }
@@ -75,7 +79,7 @@ export function validateToken(
   return { ok: true };
 }
 
-/** Accepts either a full scanned payload or a hand-typed 10-character code. */
+/** Accepts either a full scanned payload or a hand-typed CODE_LENGTH-character code. */
 export function validateAny(
   cfg: TokenConfig,
   input: unknown,
@@ -86,7 +90,7 @@ export function validateAny(
   if (!raw) return { ok: false, reason: "unreadable" };
   if (raw.includes("|")) return validateToken(cfg, raw, ts, grace);
   const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (code.length !== 10) return { ok: false, reason: "unreadable" };
+  if (code.length !== CODE_LENGTH) return { ok: false, reason: "unreadable" };
   const now = windowIndex(ts, cfg.periodMs);
   for (let d = -grace; d <= grace; d++) {
     if (tokenForWindow(cfg.secret, now + d) === code) return { ok: true };

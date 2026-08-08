@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
 import { FakeDB, fakeAdminClient } from "./helpers/fake-supabase";
 import { buildPayload, windowIndex, tokenForWindow, type TokenConfig } from "../lib/token";
+import { CODE_LENGTH } from "../lib/punch-constants";
 
 process.env.PUNCH_TOKEN_SECRET = "test-punch-secret";
 
@@ -76,7 +77,7 @@ describe("POST /api/punch", () => {
 
   it("rejects a forged token even with a valid window index", async () => {
     const w = windowIndex(Date.now(), PERIOD_MS);
-    const forged = `CAFEPUNCH|1|${SITE_ID}|${w}|WRONGCODE1`;
+    const forged = `CAFEPUNCH|1|${SITE_ID}|${w}|${"Z".repeat(CODE_LENGTH)}`;
     const res = await POST(req({ code: forged, pin: PIN }));
     const json = await res.json();
     expect(json).toMatchObject({ ok: false, reason: "bad-token" });

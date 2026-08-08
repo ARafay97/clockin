@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine, Check, Clock } from "lucide-react";
+import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
 import { PinPad } from "@/components/PinPad";
 import { Flag } from "@/components/Flag";
 import { hhmm, type Flag as FlagType } from "@/lib/attendance";
+import { CODE_LENGTH } from "@/lib/punch-constants";
 
 type Step = "code" | "pin" | "done";
 
@@ -40,7 +42,7 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
 
   const acceptCode = useCallback((raw: string) => {
     const trimmed = (raw || "").trim();
-    const looksValid = trimmed.includes("|") || trimmed.replace(/[^A-Za-z0-9]/g, "").length === 10;
+    const looksValid = trimmed.includes("|") || trimmed.replace(/[^A-Za-z0-9]/g, "").length === CODE_LENGTH;
     if (!looksValid) {
       setError("Couldn't read that code.");
       return false;
@@ -55,53 +57,40 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
 
   useEffect(() => {
     if (!scanning) return;
-    let stream: MediaStream | null = null;
-    let raf = 0;
     let dead = false;
+    let controls: IScannerControls | undefined;
+
     (async () => {
-      if (typeof window === "undefined" || !("BarcodeDetector" in window)) {
+      // Decodes QR frames from a canvas snapshot rather than a native
+      // barcode-detection API, so it works in Safari on iOS -- not just
+      // Chromium browsers, which are the only ones with `BarcodeDetector`.
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
         setCamState("unsupported");
         return;
       }
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const reader = new BrowserQRCodeReader();
+        controls = await reader.decodeFromConstraints(
+          { video: { facingMode: "environment" } },
+          videoRef.current ?? undefined,
+          (result) => {
+            if (dead || !result) return;
+            if (acceptCode(result.getText())) controls?.stop();
+          }
+        );
         if (dead) {
-          stream.getTracks().forEach((t) => t.stop());
+          controls.stop();
           return;
         }
         setCamState("live");
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        type BarcodeDetectorCtor = new (opts: { formats: string[] }) => {
-          detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
-        };
-        const Detector = (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
-        const det = new Detector({ formats: ["qr_code"] });
-        const loop = async () => {
-          if (dead) return;
-          try {
-            if (videoRef.current && videoRef.current.readyState >= 2) {
-              const codes = await det.detect(videoRef.current);
-              if (codes && codes.length) {
-                if (acceptCode(codes[0].rawValue)) return;
-              }
-            }
-          } catch {
-            // keep scanning
-          }
-          raf = requestAnimationFrame(loop);
-        };
-        loop();
       } catch {
         setCamState("denied");
       }
     })();
+
     return () => {
       dead = true;
-      if (raf) cancelAnimationFrame(raf);
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      controls?.stop();
     };
   }, [scanning, acceptCode]);
 
@@ -234,7 +223,7 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
             <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", padding: 20, textAlign: "center" }}>
               <span className="cf-note">
                 {camState === "unsupported"
-                  ? "This browser can't scan QR codes. Type the code underneath it instead."
+                  ? "This browser doesn't support camera access. Type the code underneath it instead."
                   : camState === "denied"
                     ? "Camera blocked. Type the code shown under the QR instead."
                     : "Starting camera…"}
@@ -266,8 +255,8 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
         <input
           className="cf-mono"
           value={manual}
-          maxLength={14}
-          placeholder="ABCDE12345"
+          maxLength={10}
+          placeholder="ABCDEF"
           aria-label="Punch code from the tablet"
           style={{ letterSpacing: ".14em", textTransform: "uppercase" }}
           onChange={(e) => {
@@ -276,7 +265,12 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
           }}
           onKeyDown={(e) => e.key === "Enter" && acceptCode(manual)}
         />
-        <button className="cf-btn p" style={{ flex: "none" }} onClick={() => acceptCode(manual)} disabled={manual.trim().length < 10}>
+        <button
+          className="cf-btn p"
+          style={{ flex: "none" }}
+          onClick={() => acceptCode(manual)}
+          disabled={manual.trim().length < CODE_LENGTH}
+        >
           Go
         </button>
       </div>
