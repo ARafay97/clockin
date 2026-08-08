@@ -42,7 +42,18 @@ export function PunchClient({ initialCode }: { initialCode?: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const acceptCode = useCallback((raw: string) => {
-    const trimmed = (raw || "").trim();
+    let trimmed = (raw || "").trim();
+    // The kiosk QR encodes a full URL (https://.../punch?code=...) so any
+    // phone's native camera app can open it directly. Scanning it in-app
+    // instead hands us that same URL string back verbatim -- pull the real
+    // code out of its query param rather than treating the whole URL as one.
+    try {
+      const asUrl = new URL(trimmed);
+      const fromQuery = asUrl.searchParams.get("code");
+      if (fromQuery) trimmed = fromQuery;
+    } catch {
+      // Not a URL -- a raw scanned payload or a hand-typed code, unchanged.
+    }
     const looksValid = trimmed.includes("|") || trimmed.replace(/[^A-Za-z0-9]/g, "").length === CODE_LENGTH;
     if (!looksValid) {
       setError("Couldn't read that code.");
