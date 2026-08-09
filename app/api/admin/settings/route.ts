@@ -3,7 +3,7 @@ import { requireManager } from "@/lib/require-manager";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const SITE_ID = process.env.SITE_ID || "CAFE01";
-const EDITABLE_FIELDS = ["cafe_name", "grace_min", "round_step", "cooldown_sec", "token_period_ms", "timezone"] as const;
+const EDITABLE_FIELDS = ["cafe_name", "grace_min", "round_step", "cooldown_sec", "timezone"] as const;
 
 export async function GET() {
   const user = await requireManager();

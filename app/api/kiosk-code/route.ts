@@ -10,8 +10,9 @@ const SITE_ID = process.env.SITE_ID || "CAFE01";
 
 /**
  * Everything the kiosk tablet shows lives behind this one device-token gate
- * -- the rotating code, who's currently on the floor, and today's totals --
- * rather than adding a second, ungated endpoint for the floor list.
+ * -- the (static, printable) code, who's currently on the floor, and
+ * today's totals -- rather than adding a second, ungated endpoint for the
+ * floor list.
  */
 export async function GET(request: NextRequest) {
   const device = request.nextUrl.searchParams.get("device");
@@ -30,10 +31,9 @@ export async function GET(request: NextRequest) {
   }
 
   const now = Date.now();
-  const tokenConfig = { siteId: SITE_ID, secret: getPunchSecret(), periodMs: settingsRow.token_period_ms };
-  const payload = buildPayload(tokenConfig, now);
+  const tokenConfig = { siteId: SITE_ID, secret: getPunchSecret(), epoch: settingsRow.token_epoch ?? 1 };
+  const payload = buildPayload(tokenConfig);
   const code = payload.split("|")[4];
-  const msLeft = settingsRow.token_period_ms - (now % settingsRow.token_period_ms);
 
   const today = dateKey(new Date(now));
   const [{ data: staffRows }, { data: openRows }, { data: todayRows }] = await Promise.all([
@@ -87,8 +87,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     payload,
     code,
-    msLeft,
-    period: settingsRow.token_period_ms,
     cafeName: settingsRow.cafe_name,
     now,
     onFloor,

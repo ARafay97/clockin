@@ -46,7 +46,6 @@
   letter-spacing:.13em;text-transform:uppercase;color:#5c6273;border-bottom:1px dashed #b9bdc9;padding-bottom:9px;margin-bottom:14px}
 .cf-code{font-family:var(--mono);font-size:23px;letter-spacing:.16em;text-align:center;margin-top:12px;font-weight:600}
 .cf-code small{display:block;font-size:9px;letter-spacing:.16em;color:#5c6273;margin-bottom:3px;font-weight:500}
-.cf-ring{transform:rotate(-90deg)}
 .cf-floor{display:flex;flex-direction:column;gap:8px}
 .cf-row{display:flex;align-items:center;gap:11px;padding:11px 13px;background:var(--panel2);
   border:1px solid var(--line);border-radius:11px}
@@ -84,3 +83,11 @@
 @keyframes cf-pulse{0%,100%{opacity:1}50%{opacity:.55}}
 .cf-live{animation:cf-pulse 2s ease-in-out infinite}
 @media(prefers-reduced-motion:reduce){.cf-live{animation:none}}
+
+@media print{
+  .cf-no-print{display:none!important}
+  .cf{background:#fff!important}
+  .cf-shell{padding:0!important;max-width:none!important}
+  .cf-split{display:block!important}
+  .cf-ticket{box-shadow:none!important;margin:0!important;max-width:100%!important}
+}

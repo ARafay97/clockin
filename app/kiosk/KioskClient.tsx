@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Maximize2, Minimize2, Coffee } from "lucide-react";
+import { Maximize2, Minimize2, Coffee, Printer } from "lucide-react";
 import { QRTicket } from "@/components/QRTicket";
 import { Flag } from "@/components/Flag";
 import { hhmm, timeStr, MIN, type Flag as FlagType } from "@/lib/attendance";
@@ -8,8 +8,6 @@ import { hhmm, timeStr, MIN, type Flag as FlagType } from "@/lib/attendance";
 interface KioskData {
   payload: string;
   code: string;
-  msLeft: number;
-  period: number;
   cafeName: string;
   now: number;
   onFloor: { staffId: string; name: string; inAt: number; inFlag: FlagType; minutes: number }[];
@@ -21,7 +19,6 @@ const POLL_MS = 5000;
 export function KioskClient({ device }: { device: string }) {
   const [data, setData] = useState<KioskData | null>(null);
   const [clientNow, setClientNow] = useState(() => Date.now());
-  const [fetchedAt, setFetchedAt] = useState(() => Date.now());
   const [full, setFull] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +35,6 @@ export function KioskClient({ device }: { device: string }) {
       }
       const json = (await res.json()) as KioskData;
       setData(json);
-      setFetchedAt(Date.now());
       setError(null);
     } catch {
       setError("Can't reach the server.");
@@ -56,7 +52,7 @@ export function KioskClient({ device }: { device: string }) {
   }, [load]);
 
   useEffect(() => {
-    const id = setInterval(() => setClientNow(Date.now()), 250);
+    const id = setInterval(() => setClientNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -81,22 +77,16 @@ export function KioskClient({ device }: { device: string }) {
     );
   }
 
-  const elapsed = clientNow - fetchedAt;
-  const msLeft = Math.max(0, data.msLeft - elapsed);
-  const nowDisplay = data.now + elapsed;
-
   // Encode a real URL rather than the bare payload, so any phone's native
   // camera app can scan it and open straight to the PIN screen -- scanning
-  // inside the app (BarcodeDetector) still works too, but that API doesn't
-  // exist in Safari on iOS, so this is the path that actually works there.
+  // inside the app still works too, via a canvas-based decoder that also
+  // works in Safari on iOS, where the native BarcodeDetector API doesn't.
   const qrUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/punch?code=${encodeURIComponent(data.payload)}`
       : data.payload;
 
-  const ticket = (
-    <QRTicket payload={qrUrl} code={data.code} msLeft={msLeft} period={data.period} cafeName={data.cafeName} />
-  );
+  const ticket = <QRTicket payload={qrUrl} code={data.code} cafeName={data.cafeName} />;
 
   if (full) {
     return (
@@ -106,7 +96,7 @@ export function KioskClient({ device }: { device: string }) {
       >
         <div>
           {ticket}
-          <button className="cf-btn" style={{ margin: "22px auto 0", display: "flex" }} onClick={() => setFull(false)}>
+          <button className="cf-btn cf-no-print" style={{ margin: "22px auto 0", display: "flex" }} onClick={() => setFull(false)}>
             <Minimize2 size={15} /> Exit full screen
           </button>
         </div>
@@ -117,7 +107,7 @@ export function KioskClient({ device }: { device: string }) {
   return (
     <div className="cf">
       <div className="cf-shell" style={{ paddingBottom: 24 }}>
-        <header className="cf-top">
+        <header className="cf-top cf-no-print">
           <div className="cf-brand">
             <Coffee size={19} style={{ color: "var(--brass)", flex: "none" }} aria-hidden="true" />
             <div style={{ minWidth: 0 }}>
@@ -125,35 +115,40 @@ export function KioskClient({ device }: { device: string }) {
               <div className="sub">{data.onFloor.length} on the floor</div>
             </div>
           </div>
-          <div className="cf-clock">{timeStr(nowDisplay)}</div>
+          <div className="cf-clock">{timeStr(clientNow)}</div>
         </header>
 
         <div className="cf-split">
           <section>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <h2 className="cf-h">Tablet code</h2>
-              <button className="cf-btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => setFull(true)}>
-                <Maximize2 size={13} /> Full screen
-              </button>
+            <div className="cf-no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <h2 className="cf-h">Punch code</h2>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button className="cf-btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => window.print()}>
+                  <Printer size={13} /> Print
+                </button>
+                <button className="cf-btn" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => setFull(true)}>
+                  <Maximize2 size={13} /> Full screen
+                </button>
+              </div>
             </div>
             {ticket}
             <p
-              className="cf-note"
+              className="cf-note cf-no-print"
               style={{ marginTop: 16, textAlign: "center", maxWidth: 330, marginLeft: "auto", marginRight: "auto" }}
             >
-              Staff open the Punch page on their phone, scan, and enter their PIN. The code changes every{" "}
-              {Math.round(data.period / 1000)} seconds, so a screenshot is useless from home.
+              Print this and post it at the cafe, or point a phone at this screen. This code stays valid until a
+              manager rotates it from Admin -- it doesn&apos;t change on its own.
             </p>
           </section>
 
-          <section>
+          <section className="cf-no-print">
             <h2 className="cf-h">On the floor now</h2>
             {data.onFloor.length === 0 ? (
               <div className="cf-card cf-note">Nobody signed in. The next scan starts the day.</div>
             ) : (
               <div className="cf-floor">
                 {data.onFloor.map((s) => {
-                  const long = nowDisplay - s.inAt > 12 * 60 * MIN;
+                  const long = clientNow - s.inAt > 12 * 60 * MIN;
                   return (
                     <div className="cf-row" key={s.staffId}>
                       <span className="cf-dot cf-live" style={{ background: long ? "var(--amber)" : "var(--mint)" }} />

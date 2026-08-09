@@ -17,7 +17,7 @@ type FailureReason =
   | "conflict";
 
 const FAILURE_MESSAGES: Record<FailureReason, string> = {
-  expired: "That code has expired. Look at the tablet for the current one.",
+  stale: "That code isn't valid anymore. Ask a manager for the current one.",
   "wrong-site": "That code belongs to a different site.",
   "bad-token": "That code isn't valid here.",
   "not-a-cafe-code": "That's not a punch code.",
@@ -58,11 +58,12 @@ export async function POST(request: Request) {
 
   const ip = requestIp(request.headers);
 
-  // Step 2: validate the scanned/typed code against the HMAC token, computed
-  // for windowIndex(now) +/- 1. Rate-limited by IP under its own key --
-  // checking a code is cheap (no bcrypt), so without a cap here a flood of
-  // guesses could hunt for a valid window without ever touching the PIN
-  // limiter below.
+  // Step 2: validate the scanned/typed code against the HMAC token for the
+  // site's current epoch (settings.token_epoch -- bumped only by a manual
+  // rotation, not by time). Rate-limited by IP under its own key: checking
+  // a code is cheap (no bcrypt), and since the code no longer expires on
+  // its own, a flood of guesses now has an unbounded window to work with
+  // without this cap.
   const codeKey = `code:${ip}`;
   if (isRateLimited(codeKey, now)) {
     return NextResponse.json({ ok: false, reason: "rate-limited" }, { status: 429 });
@@ -70,9 +71,9 @@ export async function POST(request: Request) {
   const tokenConfig = {
     siteId: SITE_ID,
     secret: getPunchSecret(),
-    periodMs: settingsRow.token_period_ms,
+    epoch: settingsRow.token_epoch ?? 1,
   };
-  const validation = validateAny(tokenConfig, body.code, now);
+  const validation = validateAny(tokenConfig, body.code);
   if (!validation.ok) {
     recordFailure(codeKey, now);
     return fail(validation.reason);

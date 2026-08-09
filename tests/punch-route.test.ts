@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import bcrypt from "bcryptjs";
 import { FakeDB, fakeAdminClient } from "./helpers/fake-supabase";
-import { buildPayload, windowIndex, tokenForWindow, type TokenConfig } from "../lib/token";
+import { buildPayload, tokenForEpoch, type TokenConfig } from "../lib/token";
 import { CODE_LENGTH } from "../lib/punch-constants";
 
 process.env.PUNCH_TOKEN_SECRET = "test-punch-secret";
@@ -13,9 +13,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 const { POST } = await import("../app/api/punch/route");
 
 const SITE_ID = "CAFE01";
-const PERIOD_MS = 60000;
+const EPOCH = 1;
 const PIN = "1234";
-const cfg: TokenConfig = { siteId: SITE_ID, secret: "test-punch-secret", periodMs: PERIOD_MS };
+const cfg: TokenConfig = { siteId: SITE_ID, secret: "test-punch-secret", epoch: EPOCH };
 
 let db: FakeDB;
 
@@ -27,7 +27,7 @@ function makeDb(): FakeDB {
     grace_min: 5,
     round_step: 1,
     cooldown_sec: 60,
-    token_period_ms: PERIOD_MS,
+    token_epoch: EPOCH,
     timezone: "UTC",
   });
   database.tables.staff.rows.push({
@@ -59,32 +59,31 @@ describe("POST /api/punch", () => {
     setDb();
   });
 
-  it("rejects an expired code", async () => {
-    const staleWindow = windowIndex(Date.now(), PERIOD_MS) - 10;
-    const code = `CAFEPUNCH|1|${SITE_ID}|${staleWindow}|${tokenForWindow(cfg.secret, staleWindow)}`;
+  it("rejects a code from a previous epoch (rotated/stale)", async () => {
+    const staleEpoch = EPOCH - 1;
+    const code = `CAFEPUNCH|1|${SITE_ID}|${staleEpoch}|${tokenForEpoch(cfg.secret, staleEpoch)}`;
     const res = await POST(req({ code, pin: PIN }));
     const json = await res.json();
-    expect(json).toMatchObject({ ok: false, reason: "expired" });
+    expect(json).toMatchObject({ ok: false, reason: "stale" });
     expect(res.status).toBe(200);
   });
 
   it("rejects a code from another site", async () => {
-    const payload = buildPayload({ ...cfg, siteId: "OTHER-SITE" }, Date.now());
+    const payload = buildPayload({ ...cfg, siteId: "OTHER-SITE" });
     const res = await POST(req({ code: payload, pin: PIN }));
     const json = await res.json();
     expect(json).toMatchObject({ ok: false, reason: "wrong-site" });
   });
 
-  it("rejects a forged token even with a valid window index", async () => {
-    const w = windowIndex(Date.now(), PERIOD_MS);
-    const forged = `CAFEPUNCH|1|${SITE_ID}|${w}|${"Z".repeat(CODE_LENGTH)}`;
+  it("rejects a forged token even with the current epoch", async () => {
+    const forged = `CAFEPUNCH|1|${SITE_ID}|${EPOCH}|${"Z".repeat(CODE_LENGTH)}`;
     const res = await POST(req({ code: forged, pin: PIN }));
     const json = await res.json();
     expect(json).toMatchObject({ ok: false, reason: "bad-token" });
   });
 
   it("ignores a client-supplied timestamp when deciding the punch", async () => {
-    const payload = buildPayload(cfg, Date.now());
+    const payload = buildPayload(cfg);
     const spoofedNow = Date.now() - 1000 * 60 * 60 * 24 * 30; // "a month ago"
     const res = await POST(req({ code: payload, pin: PIN, now: spoofedNow }));
     const json = await res.json();
@@ -96,7 +95,7 @@ describe("POST /api/punch", () => {
   });
 
   it("lets exactly one of two concurrent punches open a session, not two", async () => {
-    const payload = buildPayload(cfg, Date.now());
+    const payload = buildPayload(cfg);
     const [r1, r2] = await Promise.all([
       POST(req({ code: payload, pin: PIN })),
       POST(req({ code: payload, pin: PIN })),
@@ -111,7 +110,7 @@ describe("POST /api/punch", () => {
   });
 
   it("accepts a correct PIN and code, then rejects a bad PIN without revealing why", async () => {
-    const payload = buildPayload(cfg, Date.now());
+    const payload = buildPayload(cfg);
     const bad = await POST(req({ code: payload, pin: "9999" }));
     const badJson = await bad.json();
     expect(badJson).toMatchObject({ ok: false, reason: "bad-pin" });
